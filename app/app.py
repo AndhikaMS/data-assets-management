@@ -192,7 +192,98 @@ def aset_tambah():
 @app.route('/kategori')
 @login_required
 def kategori_list():
-    return render_template('kategori/list.html')
+    categories = Category.query.order_by(Category.created_at.desc()).all()
+    return render_template('kategori/list.html', categories=categories)
+
+@app.route('/kategori/tambah', methods=['POST'])
+@login_required
+def kategori_tambah():
+    name = request.form.get('name', '').strip()
+    
+    if not name:
+        flash('Nama kategori tidak boleh kosong', 'danger')
+        return redirect(url_for('kategori_list'))
+    
+    # Check if category already exists
+    existing = Category.query.filter_by(name=name).first()
+    if existing:
+        flash('Nama kategori sudah digunakan', 'danger')
+        return redirect(url_for('kategori_list'))
+    
+    # Create new category
+    category = Category(name=name)
+    db.session.add(category)
+    
+    # Log activity
+    history = AssetHistory(
+        user_id=session['user_id'],
+        action='ADD_CATEGORY',
+        description=f'Menambahkan kategori: {name}'
+    )
+    db.session.add(history)
+    
+    db.session.commit()
+    flash(f'Kategori "{name}" berhasil ditambahkan', 'success')
+    return redirect(url_for('kategori_list'))
+
+@app.route('/kategori/edit/<int:id>', methods=['POST'])
+@login_required
+def kategori_edit(id):
+    category = Category.query.get_or_404(id)
+    name = request.form.get('name', '').strip()
+    
+    if not name:
+        flash('Nama kategori tidak boleh kosong', 'danger')
+        return redirect(url_for('kategori_list'))
+    
+    # Check if new name already exists (except current category)
+    existing = Category.query.filter(Category.name == name, Category.id != id).first()
+    if existing:
+        flash('Nama kategori sudah digunakan', 'danger')
+        return redirect(url_for('kategori_list'))
+    
+    old_name = category.name
+    category.name = name
+    category.updated_at = datetime.utcnow()
+    
+    # Log activity
+    history = AssetHistory(
+        user_id=session['user_id'],
+        action='EDIT_CATEGORY',
+        description=f'Mengubah kategori dari "{old_name}" menjadi "{name}"'
+    )
+    db.session.add(history)
+    
+    db.session.commit()
+    flash(f'Kategori berhasil diubah menjadi "{name}"', 'success')
+    return redirect(url_for('kategori_list'))
+
+@app.route('/kategori/hapus/<int:id>', methods=['POST'])
+@login_required
+def kategori_hapus(id):
+    category = Category.query.get_or_404(id)
+    
+    # Check if category is used by any asset
+    asset_count = Asset.query.filter_by(category_id=id).count()
+    if asset_count > 0:
+        flash(f'Kategori "{category.name}" tidak dapat dihapus karena masih digunakan oleh {asset_count} aset', 'danger')
+        return redirect(url_for('kategori_list'))
+    
+    name = category.name
+    
+    # Log activity
+    history = AssetHistory(
+        user_id=session['user_id'],
+        action='DELETE_CATEGORY',
+        description=f'Menghapus kategori: {name}'
+    )
+    db.session.add(history)
+    
+    db.session.delete(category)
+    db.session.commit()
+    
+    flash(f'Kategori "{name}" berhasil dihapus', 'success')
+    return redirect(url_for('kategori_list'))
 
 # ============ HISTORY ROUTES ============
 @app.route('/riwayat')
