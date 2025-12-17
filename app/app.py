@@ -19,6 +19,30 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'photos'), exist_ok=True)
 os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'qrcodes'), exist_ok=True)
 
+# Allowed extensions for photo upload
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def generate_asset_code():
+    """Generate unique asset code with format: AST-YYYYMMDD-XXXX"""
+    today = datetime.utcnow().strftime('%Y%m%d')
+    
+    # Get count of assets created today
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    count = Asset.query.filter(Asset.created_at >= today_start).count()
+    
+    # Generate code
+    code = f"AST-{today}-{count + 1:04d}"
+    
+    # Ensure uniqueness
+    while Asset.query.filter_by(asset_code=code).first():
+        count += 1
+        code = f"AST-{today}-{count + 1:04d}"
+    
+    return code
+
 # ============ MODELS ============
 class User(db.Model):
     __tablename__ = 'users'
@@ -181,12 +205,90 @@ def dashboard():
 @app.route('/aset')
 @login_required
 def aset_list():
-    return render_template('aset/list.html')
+    assets = Asset.query.order_by(Asset.created_at.desc()).all()
+    return render_template('aset/list.html', assets=assets)
 
-@app.route('/aset/tambah')
+@app.route('/aset/tambah', methods=['GET', 'POST'])
 @login_required
 def aset_tambah():
-    return render_template('aset/tambah.html')
+    if request.method == 'POST':
+        # Get form data
+        name = request.form.get('name', '').strip()
+        category_id = request.form.get('category_id')
+        location_id = request.form.get('location_id')
+        condition = request.form.get('condition', '').strip()
+        description = request.form.get('description', '').strip()
+        
+        # Validation
+        if not name:
+            flash('Nama aset tidak boleh kosong', 'danger')
+            return redirect(url_for('aset_tambah'))
+        
+        if not category_id:
+            flash('Kategori harus dipilih', 'danger')
+            return redirect(url_for('aset_tambah'))
+        
+        if not location_id:
+            flash('Lokasi harus dipilih', 'danger')
+            return redirect(url_for('aset_tambah'))
+        
+        # Generate asset code
+        asset_code = generate_asset_code()
+        
+        # Create new asset
+        asset = Asset(
+            asset_code=asset_code,
+            name=name,
+            category_id=category_id,
+            location_id=location_id,
+            condition=condition,
+            description=description
+        )
+        
+        db.session.add(asset)
+        db.session.flush()  # Get asset.id before commit
+        
+        # Handle photo upload
+        if 'photo' in request.files:
+            photo = request.files['photo']
+            if photo and photo.filename and allowed_file(photo.filename):
+                # Generate unique filename
+                import uuid
+                ext = photo.filename.rsplit('.', 1)[1].lower()
+                filename = f"{asset.asset_code}_{uuid.uuid4().hex[:8]}.{ext}"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'photos', filename)
+                
+                # Save file
+                photo.save(filepath)
+                
+                # Save to database
+                asset_photo = AssetPhoto(
+                    asset_id=asset.id,
+                    file_path=f"uploads/photos/{filename}"
+                )
+                db.session.add(asset_photo)
+        
+        # Log activity
+        history = AssetHistory(
+            asset_id=asset.id,
+            user_id=session['user_id'],
+            action='ADD',
+            description=f'Menambahkan aset: {name} ({asset_code})'
+        )
+        db.session.add(history)
+        
+        db.session.commit()
+        
+        flash(f'Aset "{name}" berhasil ditambahkan dengan kode {asset_code}', 'success')
+        return redirect(url_for('aset_list'))
+    
+    # GET request - show form
+    categories = Category.query.order_by(Category.name).all()
+    locations = Location.query.order_by(Location.name).all()
+    
+    return render_template('aset/tambah.html', 
+                         categories=categories, 
+                         locations=locations)
 
 # ============ CATEGORY ROUTES ============
 @app.route('/kategori')
@@ -285,6 +387,103 @@ def kategori_hapus(id):
     flash(f'Kategori "{name}" berhasil dihapus', 'success')
     return redirect(url_for('kategori_list'))
 
+# ============ LOCATION ROUTES ============
+@app.route('/lokasi')
+@login_required
+def lokasi_list():
+    locations = Location.query.order_by(Location.created_at.desc()).all()
+    return render_template('lokasi/list.html', locations=locations)
+
+@app.route('/lokasi/tambah', methods=['POST'])
+@login_required
+def lokasi_tambah():
+    name = request.form.get('name', '').strip()
+    
+    if not name:
+        flash('Nama lokasi tidak boleh kosong', 'danger')
+        return redirect(url_for('lokasi_list'))
+    
+    # Check if location already exists
+    existing = Location.query.filter_by(name=name).first()
+    if existing:
+        flash('Nama lokasi sudah digunakan', 'danger')
+        return redirect(url_for('lokasi_list'))
+    
+    # Create new location
+    location = Location(name=name)
+    db.session.add(location)
+    
+    # Log activity
+    history = AssetHistory(
+        user_id=session['user_id'],
+        action='ADD_LOCATION',
+        description=f'Menambahkan lokasi: {name}'
+    )
+    db.session.add(history)
+    
+    db.session.commit()
+    flash(f'Lokasi "{name}" berhasil ditambahkan', 'success')
+    return redirect(url_for('lokasi_list'))
+
+@app.route('/lokasi/edit/<int:id>', methods=['POST'])
+@login_required
+def lokasi_edit(id):
+    location = Location.query.get_or_404(id)
+    name = request.form.get('name', '').strip()
+    
+    if not name:
+        flash('Nama lokasi tidak boleh kosong', 'danger')
+        return redirect(url_for('lokasi_list'))
+    
+    # Check if new name already exists (except current location)
+    existing = Location.query.filter(Location.name == name, Location.id != id).first()
+    if existing:
+        flash('Nama lokasi sudah digunakan', 'danger')
+        return redirect(url_for('lokasi_list'))
+    
+    old_name = location.name
+    location.name = name
+    location.updated_at = datetime.utcnow()
+    
+    # Log activity
+    history = AssetHistory(
+        user_id=session['user_id'],
+        action='EDIT_LOCATION',
+        description=f'Mengubah lokasi dari "{old_name}" menjadi "{name}"'
+    )
+    db.session.add(history)
+    
+    db.session.commit()
+    flash(f'Lokasi berhasil diubah menjadi "{name}"', 'success')
+    return redirect(url_for('lokasi_list'))
+
+@app.route('/lokasi/hapus/<int:id>', methods=['POST'])
+@login_required
+def lokasi_hapus(id):
+    location = Location.query.get_or_404(id)
+    
+    # Check if location is used by any asset
+    asset_count = Asset.query.filter_by(location_id=id).count()
+    if asset_count > 0:
+        flash(f'Lokasi "{location.name}" tidak dapat dihapus karena masih digunakan oleh {asset_count} aset', 'danger')
+        return redirect(url_for('lokasi_list'))
+    
+    name = location.name
+    
+    # Log activity
+    history = AssetHistory(
+        user_id=session['user_id'],
+        action='DELETE_LOCATION',
+        description=f'Menghapus lokasi: {name}'
+    )
+    db.session.add(history)
+    
+    db.session.delete(location)
+    db.session.commit()
+    
+    flash(f'Lokasi "{name}" berhasil dihapus', 'success')
+    return redirect(url_for('lokasi_list'))
+
 # ============ HISTORY ROUTES ============
 @app.route('/riwayat')
 @login_required
@@ -301,8 +500,25 @@ def init_db():
             admin = User(username='admin', role='admin')
             admin.set_password('admin123')
             db.session.add(admin)
-            db.session.commit()
             print("Default admin user created (username: admin, password: admin123)")
+        
+        # Create default locations if not exists
+        if Location.query.count() == 0:
+            default_locations = [
+                'Lab Komputer 1',
+                'Lab Komputer 2',
+                'Lab Fisika',
+                'Lab Kimia',
+                'Ruang Guru',
+                'Perpustakaan'
+            ]
+            for loc_name in default_locations:
+                location = Location(name=loc_name)
+                db.session.add(location)
+            print(f"Created {len(default_locations)} default locations")
+        
+        db.session.commit()
+        print("Database initialized successfully!")
 
 if __name__ == '__main__':
     init_db()
