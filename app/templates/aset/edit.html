@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Aset - {{ asset.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('aset_list') }}">Data Aset</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('aset_detail', id=asset.id) }}">{{ asset.asset_code }}</a></li>
+            <li class="breadcrumb-item active">Edit</li>
+        </ol>
+    </nav>
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>
+            <i class="bi bi-pencil"></i> Edit Aset
+        </h2>
+        <div>
+            <a href="{{ url_for('aset_detail', id=asset.id) }}" class="btn btn-secondary">
+                <i class="bi bi-x-circle"></i> Batal
+            </a>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-earmark-text"></i> Informasi Aset
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('aset_edit', id=asset.id) }}" enctype="multipart/form-data">
+                        <!-- Kode Aset (Read-only) -->
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i>
+                            Kode aset: <code>{{ asset.asset_code }}</code> (tidak dapat diubah)
+                        </div>
+                        
+                        <!-- Nama Aset -->
+                        <div class="mb-3">
+                            <label for="name" class="form-label">
+                                Nama Aset <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="name" name="name" 
+                                   value="{{ asset.name }}" required autofocus>
+                        </div>
+                        
+                        <!-- Kategori -->
+                        <div class="mb-3">
+                            <label for="category_id" class="form-label">
+                                Kategori <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="category_id" name="category_id" required>
+                                <option value="">-- Pilih Kategori --</option>
+                                {% for category in categories %}
+                                <option value="{{ category.id }}" 
+                                        {% if category.id == asset.category_id %}selected{% endif %}>
+                                    {{ category.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Lokasi -->
+                        <div class="mb-3">
+                            <label for="location_id" class="form-label">
+                                Lokasi Lab <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="location_id" name="location_id" required>
+                                <option value="">-- Pilih Lokasi --</option>
+                                {% for location in locations %}
+                                <option value="{{ location.id }}"
+                                        {% if location.id == asset.location_id %}selected{% endif %}>
+                                    {{ location.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <!-- Kondisi -->
+                        <div class="mb-3">
+                            <label for="condition" class="form-label">Kondisi Aset</label>
+                            <select class="form-select" id="condition" name="condition">
+                                <option value="">-- Pilih Kondisi --</option>
+                                <option value="Baik" {% if asset.condition == 'Baik' %}selected{% endif %}>Baik</option>
+                                <option value="Rusak Ringan" {% if asset.condition == 'Rusak Ringan' %}selected{% endif %}>Rusak Ringan</option>
+                                <option value="Rusak Berat" {% if asset.condition == 'Rusak Berat' %}selected{% endif %}>Rusak Berat</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Deskripsi -->
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Deskripsi</label>
+                            <textarea class="form-control" id="description" name="description" 
+                                      rows="4">{{ asset.description }}</textarea>
+                        </div>
+                        
+                        <!-- Upload Foto Baru -->
+                        <div class="mb-4">
+                            <label for="photo" class="form-label">
+                                <i class="bi bi-image"></i> Tambah Foto Baru (Opsional)
+                            </label>
+                            <input type="file" class="form-control" id="photo" name="photo" 
+                                   accept="image/png,image/jpeg,image/jpg,image/gif">
+                            <div class="form-text">Foto lama tidak akan terhapus. Foto baru akan ditambahkan ke galeri.</div>
+                        </div>
+                        
+                        <!-- Preview Foto Baru -->
+                        <div id="photoPreview" class="mb-3" style="display: none;">
+                            <label class="form-label">Preview Foto Baru:</label>
+                            <div>
+                                <img id="previewImage" src="" alt="Preview" class="img-thumbnail" style="max-width: 300px;">
+                            </div>
+                        </div>
+                        
+                        <!-- Buttons -->
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="bi bi-check-circle"></i> Simpan Perubahan
+                            </button>
+                            <a href="{{ url_for('aset_detail', id=asset.id) }}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Batal
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-md-4">
+            <!-- Current Photos -->
+            {% if asset.photos %}
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-images"></i> Foto Saat Ini ({{ asset.photos|length }})
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for photo in asset.photos %}
+                    <div class="mb-3 border rounded p-2">
+                        <img src="{{ url_for('static', filename=photo.file_path) }}" 
+                             class="img-thumbnail w-100 mb-2" 
+                             style="height: 150px; object-fit: cover;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                {{ photo.uploaded_at.strftime('%d/%m/%Y') }}
+                            </small>
+                            <form method="POST" action="{{ url_for('aset_foto_hapus', id=photo.id) }}" 
+                                  onsubmit="return confirm('Hapus foto ini?');" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Help -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-question-circle"></i> Panduan Edit
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <h6>Perubahan akan dicatat:</h6>
+                    <ul class="small">
+                        <li>Semua perubahan data akan tercatat di riwayat</li>
+                        <li>Timestamp "Terakhir Diupdate" akan berubah</li>
+                        <li>Kode aset tidak dapat diubah</li>
+                        <li>Foto lama tetap tersimpan</li>
+                    </ul>
+                    
+                    <hr>
+                    
+                    <h6>Kelola Foto:</h6>
+                    <ul class="small">
+                        <li>Upload foto baru akan menambah ke galeri</li>
+                        <li>Hapus foto lama menggunakan tombol 🗑️</li>
+                        <li>Setiap foto disimpan terpisah</li>
+                    </ul>
+                    
+                    <div class="alert alert-warning mt-3">
+                        <small>
+                            <i class="bi bi-exclamation-triangle"></i>
+                            Foto yang dihapus tidak dapat dikembalikan
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Photo preview
+document.getElementById('photo').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('previewImage').src = e.target.result;
+            document.getElementById('photoPreview').style.display = 'block';
+        }
+        reader.readAsDataURL(file);
+    } else {
+        document.getElementById('photoPreview').style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

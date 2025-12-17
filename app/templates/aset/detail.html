@@ -27,7 +27,7 @@
             <a href="{{ url_for('aset_list') }}" class="btn btn-secondary">
                 <i class="bi bi-arrow-left"></i> Kembali
             </a>
-            <a href="#" class="btn btn-warning">
+            <a href="{{ url_for('aset_edit', id=asset.id) }}" class="btn btn-warning">
                 <i class="bi bi-pencil"></i> Edit
             </a>
             <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteAssetModal">
@@ -136,7 +136,7 @@
             <div class="card mb-4">
                 <div class="card-header">
                     <h5 class="mb-0">
-                        <i class="bi bi-images"></i> Foto Aset
+                        <i class="bi bi-images"></i> Foto Aset ({{ asset.photos|length }})
                     </h5>
                 </div>
                 <div class="card-body">
@@ -267,29 +267,36 @@
 <div class="modal fade" id="deleteAssetModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">
-                    <i class="bi bi-exclamation-triangle"></i> Konfirmasi Hapus Aset
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Apakah Anda yakin ingin menghapus aset ini?</p>
-                <div class="alert alert-warning">
-                    <strong>{{ asset.name }}</strong><br>
-                    <code>{{ asset.asset_code }}</code>
+            <form method="POST" action="{{ url_for('aset_hapus', id=asset.id) }}">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle"></i> Konfirmasi Hapus Aset
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <p class="text-danger">
-                    <i class="bi bi-exclamation-circle"></i>
-                    Peringatan: Tindakan ini tidak dapat dibatalkan!
-                </p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                <button type="button" class="btn btn-danger">
-                    <i class="bi bi-trash"></i> Ya, Hapus Aset
-                </button>
-            </div>
+                <div class="modal-body">
+                    <p>Apakah Anda yakin ingin menghapus aset ini?</p>
+                    <div class="alert alert-warning">
+                        <strong>{{ asset.name }}</strong><br>
+                        <code>{{ asset.asset_code }}</code>
+                    </div>
+                    <p class="text-danger">
+                        <i class="bi bi-exclamation-circle"></i>
+                        Peringatan: Tindakan ini tidak dapat dibatalkan!
+                    </p>
+                    <ul class="small text-muted">
+                        <li>Semua foto aset akan dihapus</li>
+                        <li>QR Code akan dihapus</li>
+                        <li>Riwayat aktivitas akan dihapus</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash"></i> Ya, Hapus Aset
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

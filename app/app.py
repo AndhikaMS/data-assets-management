@@ -260,6 +260,174 @@ def aset_detail(id):
     
     return render_template('aset/detail.html', asset=asset, history=history)
 
+@app.route('/aset/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def aset_edit(id):
+    asset = Asset.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        # Get form data
+        name = request.form.get('name', '').strip()
+        category_id = request.form.get('category_id')
+        location_id = request.form.get('location_id')
+        condition = request.form.get('condition', '').strip()
+        description = request.form.get('description', '').strip()
+        
+        # Validation
+        if not name:
+            flash('Nama aset tidak boleh kosong', 'danger')
+            return redirect(url_for('aset_edit', id=id))
+        
+        if not category_id:
+            flash('Kategori harus dipilih', 'danger')
+            return redirect(url_for('aset_edit', id=id))
+        
+        if not location_id:
+            flash('Lokasi harus dipilih', 'danger')
+            return redirect(url_for('aset_edit', id=id))
+        
+        # Track changes for logging
+        changes = []
+        if asset.name != name:
+            changes.append(f"nama: '{asset.name}' → '{name}'")
+            asset.name = name
+        
+        if str(asset.category_id) != category_id:
+            old_cat = asset.category.name
+            new_cat = Category.query.get(category_id).name
+            changes.append(f"kategori: '{old_cat}' → '{new_cat}'")
+            asset.category_id = category_id
+        
+        if str(asset.location_id) != location_id:
+            old_loc = asset.location.name
+            new_loc = Location.query.get(location_id).name
+            changes.append(f"lokasi: '{old_loc}' → '{new_loc}'")
+            asset.location_id = location_id
+        
+        if asset.condition != condition:
+            changes.append(f"kondisi: '{asset.condition}' → '{condition}'")
+            asset.condition = condition
+        
+        if asset.description != description:
+            changes.append("deskripsi diperbarui")
+            asset.description = description
+        
+        asset.updated_at = datetime.utcnow()
+        
+        # Handle photo upload (new photo)
+        if 'photo' in request.files:
+            photo = request.files['photo']
+            if photo and photo.filename and allowed_file(photo.filename):
+                # Generate unique filename
+                import uuid
+                ext = photo.filename.rsplit('.', 1)[1].lower()
+                filename = f"{asset.asset_code}_{uuid.uuid4().hex[:8]}.{ext}"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'photos', filename)
+                
+                # Save file
+                photo.save(filepath)
+                
+                # Save to database
+                asset_photo = AssetPhoto(
+                    asset_id=asset.id,
+                    file_path=f"uploads/photos/{filename}"
+                )
+                db.session.add(asset_photo)
+                changes.append("foto baru ditambahkan")
+        
+        # Log activity if there are changes
+        if changes:
+            change_desc = ", ".join(changes)
+            history = AssetHistory(
+                asset_id=asset.id,
+                user_id=session['user_id'],
+                action='EDIT',
+                description=f'Mengubah aset {asset.asset_code}: {change_desc}'
+            )
+            db.session.add(history)
+        
+        db.session.commit()
+        
+        flash(f'Aset "{name}" berhasil diperbarui', 'success')
+        return redirect(url_for('aset_detail', id=id))
+    
+    # GET request - show form
+    categories = Category.query.order_by(Category.name).all()
+    locations = Location.query.order_by(Location.name).all()
+    
+    return render_template('aset/edit.html', 
+                         asset=asset,
+                         categories=categories, 
+                         locations=locations)
+
+@app.route('/aset/hapus/<int:id>', methods=['POST'])
+@login_required
+def aset_hapus(id):
+    asset = Asset.query.get_or_404(id)
+    asset_name = asset.name
+    asset_code = asset.asset_code
+    
+    # Delete photos from filesystem and database
+    for photo in asset.photos:
+        photo_path = os.path.join('app/static', photo.file_path)
+        if os.path.exists(photo_path):
+            os.remove(photo_path)
+        db.session.delete(photo)
+    
+    # Delete QR codes from filesystem and database
+    for qr in asset.qr_codes:
+        qr_path = os.path.join('app/static', qr.file_path)
+        if os.path.exists(qr_path):
+            os.remove(qr_path)
+        db.session.delete(qr)
+    
+    # Delete history records
+    AssetHistory.query.filter_by(asset_id=id).delete()
+    
+    # Log deletion before deleting asset
+    history = AssetHistory(
+        user_id=session['user_id'],
+        action='DELETE',
+        description=f'Menghapus aset: {asset_name} ({asset_code})'
+    )
+    db.session.add(history)
+    
+    # Delete asset
+    db.session.delete(asset)
+    db.session.commit()
+    
+    flash(f'Aset "{asset_name}" ({asset_code}) berhasil dihapus', 'success')
+    return redirect(url_for('aset_list'))
+
+@app.route('/aset/foto/hapus/<int:id>', methods=['POST'])
+@login_required
+def aset_foto_hapus(id):
+    photo = AssetPhoto.query.get_or_404(id)
+    asset_id = photo.asset_id
+    asset = photo.asset
+    
+    # Delete file from filesystem
+    photo_path = os.path.join('app/static', photo.file_path)
+    if os.path.exists(photo_path):
+        os.remove(photo_path)
+    
+    # Delete from database
+    db.session.delete(photo)
+    
+    # Log activity
+    history = AssetHistory(
+        asset_id=asset_id,
+        user_id=session['user_id'],
+        action='DELETE_PHOTO',
+        description=f'Menghapus foto dari aset {asset.asset_code}'
+    )
+    db.session.add(history)
+    
+    db.session.commit()
+    
+    flash('Foto berhasil dihapus', 'success')
+    return redirect(url_for('aset_detail', id=asset_id))
+
 @app.route('/aset/tambah', methods=['GET', 'POST'])
 @login_required
 def aset_tambah():
