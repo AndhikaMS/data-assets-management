@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Data Aset - Asset Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>
+            <i class="bi bi-box-seam"></i> Data Aset
+        </h2>
+        <a href="{{ url_for('aset_tambah') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Tambah Aset
+        </a>
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                <p class="mt-3 mb-4">Belum ada data aset</p>
+                <a href="{{ url_for('aset_tambah') }}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Tambah Aset Pertama
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
