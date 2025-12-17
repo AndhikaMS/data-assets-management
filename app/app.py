@@ -205,8 +205,60 @@ def dashboard():
 @app.route('/aset')
 @login_required
 def aset_list():
-    assets = Asset.query.order_by(Asset.created_at.desc()).all()
-    return render_template('aset/list.html', assets=assets)
+    # Get filter parameters
+    category_filter = request.args.get('category', '')
+    location_filter = request.args.get('location', '')
+    condition_filter = request.args.get('condition', '')
+    search_query = request.args.get('search', '')
+    
+    # Base query
+    query = Asset.query
+    
+    # Apply filters
+    if category_filter:
+        query = query.filter_by(category_id=category_filter)
+    
+    if location_filter:
+        query = query.filter_by(location_id=location_filter)
+    
+    if condition_filter:
+        query = query.filter_by(condition=condition_filter)
+    
+    if search_query:
+        search_pattern = f"%{search_query}%"
+        query = query.filter(
+            db.or_(
+                Asset.name.like(search_pattern),
+                Asset.asset_code.like(search_pattern)
+            )
+        )
+    
+    assets = query.order_by(Asset.created_at.desc()).all()
+    
+    # Get all categories and locations for filter dropdowns
+    categories = Category.query.order_by(Category.name).all()
+    locations = Location.query.order_by(Location.name).all()
+    
+    return render_template('aset/list.html', 
+                         assets=assets,
+                         categories=categories,
+                         locations=locations,
+                         category_filter=category_filter,
+                         location_filter=location_filter,
+                         condition_filter=condition_filter,
+                         search_query=search_query)
+
+@app.route('/aset/detail/<int:id>')
+@login_required
+def aset_detail(id):
+    asset = Asset.query.get_or_404(id)
+    
+    # Get asset history
+    history = AssetHistory.query.filter_by(asset_id=id).order_by(
+        AssetHistory.timestamp.desc()
+    ).all()
+    
+    return render_template('aset/detail.html', asset=asset, history=history)
 
 @app.route('/aset/tambah', methods=['GET', 'POST'])
 @login_required

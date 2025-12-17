@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Detail Aset - {{ asset.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('aset_list') }}">Data Aset</a></li>
+            <li class="breadcrumb-item active">{{ asset.asset_code }}</li>
+        </ol>
+    </nav>
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-box-seam"></i> {{ asset.name }}
+            </h2>
+            <p class="text-muted mb-0">
+                <code>{{ asset.asset_code }}</code>
+            </p>
+        </div>
+        <div>
+            <a href="{{ url_for('aset_list') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Kembali
+            </a>
+            <a href="#" class="btn btn-warning">
+                <i class="bi bi-pencil"></i> Edit
+            </a>
+            <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteAssetModal">
+                <i class="bi bi-trash"></i> Hapus
+            </button>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Main Info -->
+        <div class="col-md-8">
+            <!-- Asset Info Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-info-circle"></i> Informasi Aset
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Kode Aset:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            <code class="bg-light p-2 rounded">{{ asset.asset_code }}</code>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Nama Aset:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            {{ asset.name }}
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Kategori:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            <span class="badge bg-primary">{{ asset.category.name }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Lokasi:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            <i class="bi bi-geo-alt-fill text-primary"></i> {{ asset.location.name }}
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Kondisi:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            {% if asset.condition == 'Baik' %}
+                            <span class="badge bg-success">Baik</span>
+                            {% elif asset.condition == 'Rusak Ringan' %}
+                            <span class="badge bg-warning">Rusak Ringan</span>
+                            {% elif asset.condition == 'Rusak Berat' %}
+                            <span class="badge bg-danger">Rusak Berat</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ asset.condition or 'Tidak Diketahui' }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Deskripsi:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            {{ asset.description or '-' }}
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <strong>Tanggal Ditambahkan:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            {{ asset.created_at.strftime('%d %B %Y, %H:%M') }} WIB
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <strong>Terakhir Diupdate:</strong>
+                        </div>
+                        <div class="col-md-8">
+                            {{ asset.updated_at.strftime('%d %B %Y, %H:%M') }} WIB
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Photo Gallery -->
+            {% if asset.photos %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-images"></i> Foto Aset
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        {% for photo in asset.photos %}
+                        <div class="col-md-4">
+                            <a href="{{ url_for('static', filename=photo.file_path) }}" target="_blank">
+                                <img src="{{ url_for('static', filename=photo.file_path) }}" 
+                                     class="img-thumbnail w-100" 
+                                     alt="Foto {{ asset.name }}"
+                                     style="cursor: pointer; height: 200px; object-fit: cover;">
+                            </a>
+                            <small class="text-muted d-block mt-1">
+                                {{ photo.uploaded_at.strftime('%d/%m/%Y') }}
+                            </small>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- History -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clock-history"></i> Riwayat Aktivitas
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if history %}
+                    <div class="timeline">
+                        {% for item in history %}
+                        <div class="mb-3 pb-3 border-bottom">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <strong>{{ item.user.username }}</strong>
+                                    <span class="badge bg-info ms-2">{{ item.action }}</span>
+                                </div>
+                                <small class="text-muted">
+                                    {{ item.timestamp.strftime('%d/%m/%Y %H:%M') }}
+                                </small>
+                            </div>
+                            <p class="mb-0 mt-2 text-muted">
+                                {{ item.description }}
+                            </p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada riwayat aktivitas</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-md-4">
+            <!-- QR Code Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-qr-code"></i> QR Code
+                    </h5>
+                </div>
+                <div class="card-body text-center">
+                    {% if asset.qr_codes %}
+                    <img src="{{ url_for('static', filename=asset.qr_codes[0].file_path) }}" 
+                         alt="QR Code {{ asset.asset_code }}"
+                         class="img-fluid mb-3"
+                         style="max-width: 250px;">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('static', filename=asset.qr_codes[0].file_path) }}" 
+                           download="QR_{{ asset.asset_code }}.png"
+                           class="btn btn-primary">
+                            <i class="bi bi-download"></i> Download QR Code
+                        </a>
+                    </div>
+                    {% else %}
+                    <div class="text-muted py-4">
+                        <i class="bi bi-qr-code" style="font-size: 4rem;"></i>
+                        <p class="mt-3">QR Code belum di-generate</p>
+                        <button class="btn btn-primary">
+                            <i class="bi bi-qr-code-scan"></i> Generate QR Code
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Quick Stats -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-bar-chart"></i> Statistik
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Total Foto:</span>
+                        <strong>{{ asset.photos|length }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Total Aktivitas:</span>
+                        <strong>{{ history|length }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>QR Code:</span>
+                        <strong>
+                            {% if asset.qr_codes %}
+                            <span class="text-success">
+                                <i class="bi bi-check-circle-fill"></i> Ada
+                            </span>
+                            {% else %}
+                            <span class="text-muted">
+                                <i class="bi bi-x-circle"></i> Belum
+                            </span>
+                            {% endif %}
+                        </strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteAssetModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle"></i> Konfirmasi Hapus Aset
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Apakah Anda yakin ingin menghapus aset ini?</p>
+                <div class="alert alert-warning">
+                    <strong>{{ asset.name }}</strong><br>
+                    <code>{{ asset.asset_code }}</code>
+                </div>
+                <p class="text-danger">
+                    <i class="bi bi-exclamation-circle"></i>
+                    Peringatan: Tindakan ini tidak dapat dibatalkan!
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-danger">
+                    <i class="bi bi-trash"></i> Ya, Hapus Aset
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
