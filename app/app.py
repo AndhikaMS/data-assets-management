@@ -536,6 +536,12 @@ def qr_regenerate(id):
     flash('QR Code berhasil di-regenerate', 'success')
     return redirect(url_for('aset_detail', id=id))
 
+# ============ SCAN QR ROUTES ============
+@app.route('/scan')
+@login_required
+def scan_qr():
+    return render_template('scan/qr_scanner.html')
+
 @app.route('/aset/tambah', methods=['GET', 'POST'])
 @login_required
 def aset_tambah():
@@ -595,6 +601,15 @@ def aset_tambah():
                     file_path=f"uploads/photos/{filename}"
                 )
                 db.session.add(asset_photo)
+        
+        # Generate QR Code automatically
+        qr_path, qr_value = generate_qr_code(asset)
+        qr_code = QRCode(
+            asset_id=asset.id,
+            file_path=qr_path,
+            qr_value=qr_value
+        )
+        db.session.add(qr_code)
         
         # Log activity
         history = AssetHistory(

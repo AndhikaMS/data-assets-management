@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}Scan QR Code - Asset Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    #scanner-container {
+        position: relative;
+        max-width: 640px;
+        margin: 0 auto;
+    }
+    
+    #video {
+        width: 100%;
+        height: auto;
+        border-radius: 10px;
+        background: #000;
+    }
+    
+    #canvas {
+        display: none;
+    }
+    
+    .scanner-overlay {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 250px;
+        height: 250px;
+        border: 3px solid #00ff00;
+        border-radius: 10px;
+        pointer-events: none;
+    }
+    
+    .scanner-corner {
+        position: absolute;
+        width: 30px;
+        height: 30px;
+        border: 4px solid #00ff00;
+    }
+    
+    .corner-tl { top: -3px; left: -3px; border-right: none; border-bottom: none; }
+    .corner-tr { top: -3px; right: -3px; border-left: none; border-bottom: none; }
+    .corner-bl { bottom: -3px; left: -3px; border-right: none; border-top: none; }
+    .corner-br { bottom: -3px; right: -3px; border-left: none; border-top: none; }
+    
+    .status-indicator {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    
+    .status-ready {
+        background: #28a745;
+        color: white;
+    }
+    
+    .status-scanning {
+        background: #ffc107;
+        color: black;
+    }
+    
+    .status-error {
+        background: #dc3545;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>
+            <i class="bi bi-qr-code-scan"></i> Scan QR Code
+        </h2>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Kembali
+        </a>
+    </div>
+    
+    <div class="row">
+        <!-- Scanner -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <div id="scanner-container">
+                        <video id="video" autoplay playsinline></video>
+                        <canvas id="canvas"></canvas>
+                        
+                        <!-- Scanner Overlay -->
+                        <div class="scanner-overlay">
+                            <div class="scanner-corner corner-tl"></div>
+                            <div class="scanner-corner corner-tr"></div>
+                            <div class="scanner-corner corner-bl"></div>
+                            <div class="scanner-corner corner-br"></div>
+                        </div>
+                        
+                        <!-- Status Indicator -->
+                        <div id="status" class="status-indicator status-ready">
+                            <i class="bi bi-camera-video"></i> Ready
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mt-3">
+                        <button id="startBtn" class="btn btn-success" disabled>
+                            <i class="bi bi-play-fill"></i> Mulai Scan
+                        </button>
+                        <button id="stopBtn" class="btn btn-danger" style="display: none;">
+                            <i class="bi bi-stop-fill"></i> Stop
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Instructions & Results -->
+        <div class="col-md-4">
+            <!-- Instructions -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-info-circle"></i> Cara Scan
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <ol class="small">
+                        <li>Izinkan akses kamera saat diminta</li>
+                        <li>Klik "Mulai Scan"</li>
+                        <li>Arahkan QR Code ke kamera</li>
+                        <li>Tunggu hingga QR terdeteksi</li>
+                        <li>Otomatis redirect ke detail aset</li>
+                    </ol>
+                    
+                    <div class="alert alert-info mt-3">
+                        <small>
+                            <i class="bi bi-lightbulb"></i>
+                            <strong>Tips:</strong> Pastikan QR Code dalam fokus dan pencahayaan cukup
+                        </small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Scan Results -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-list-check"></i> Hasil Scan
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="result-area">
+                        <p class="text-muted text-center">
+                            <i class="bi bi-qr-code" style="font-size: 3rem;"></i><br>
+                            Belum ada QR yang terdeteksi
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusDiv = document.getElementById('status');
+const resultArea = document.getElementById('result-area');
+
+let scanning = false;
+let stream = null;
+
+// Request camera access
+navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(function(mediaStream) {
+        stream = mediaStream;
+        video.srcObject = stream;
+        startBtn.disabled = false;
+        updateStatus('ready', 'Ready');
+    })
+    .catch(function(err) {
+        console.error('Error accessing camera:', err);
+        updateStatus('error', 'Kamera tidak tersedia');
+        resultArea.innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Error:</strong> Tidak dapat mengakses kamera.<br>
+                <small>${err.message}</small>
+            </div>
+        `;
+    });
+
+// Start scanning
+startBtn.addEventListener('click', function() {
+    scanning = true;
+    startBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-block';
+    updateStatus('scanning', 'Scanning...');
+    tick();
+});
+
+// Stop scanning
+stopBtn.addEventListener('click', function() {
+    scanning = false;
+    stopBtn.style.display = 'none';
+    startBtn.style.display = 'inline-block';
+    updateStatus('ready', 'Ready');
+});
+
+// Scan loop
+function tick() {
+    if (!scanning) return;
+    
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+        });
+        
+        if (code) {
+            console.log('QR Code detected:', code.data);
+            handleQRCode(code.data);
+        }
+    }
+    
+    requestAnimationFrame(tick);
+}
+
+// Handle detected QR code
+function handleQRCode(data) {
+    scanning = false;
+    updateStatus('ready', 'QR Terdeteksi!');
+    
+    // Display result
+    resultArea.innerHTML = `
+        <div class="alert alert-success">
+            <strong>QR Code Terdeteksi!</strong><br>
+            <small class="text-break">${data}</small>
+        </div>
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Redirect...</p>
+        </div>
+    `;
+    
+    // Check if it's our asset URL
+    if (data.includes('/aset/detail/')) {
+        // Extract asset ID from URL
+        const match = data.match(/\/aset\/detail\/(\d+)/);
+        if (match) {
+            const assetId = match[1];
+            // Redirect to asset detail
+            setTimeout(() => {
+                window.location.href = `/aset/detail/${assetId}`;
+            }, 1000);
+        } else {
+            showError('URL tidak valid');
+        }
+    } else {
+        showError('QR Code bukan dari sistem ini');
+    }
+}
+
+// Update status indicator
+function updateStatus(type, text) {
+    statusDiv.className = 'status-indicator status-' + type;
+    statusDiv.innerHTML = `<i class="bi bi-${getIcon(type)}"></i> ${text}`;
+}
+
+function getIcon(type) {
+    const icons = {
+        'ready': 'camera-video',
+        'scanning': 'search',
+        'error': 'exclamation-triangle'
+    };
+    return icons[type] || 'camera-video';
+}
+
+// Show error
+function showError(message) {
+    scanning = false;
+    stopBtn.style.display = 'none';
+    startBtn.style.display = 'inline-block';
+    updateStatus('error', 'Error');
+    
+    resultArea.innerHTML = `
+        <div class="alert alert-danger">
+            <strong>Error:</strong> ${message}
+        </div>
+        <button class="btn btn-primary w-100" onclick="location.reload()">
+            <i class="bi bi-arrow-clockwise"></i> Scan Ulang
+        </button>
+    `;
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+    }
+});
+</script>
+{% endblock %}

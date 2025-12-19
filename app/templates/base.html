@@ -63,6 +63,9 @@
                         <a class="nav-link {% if request.endpoint and 'lokasi' in request.endpoint %}active{% endif %}" href="{{ url_for('lokasi_list') }}">
                             <i class="bi bi-geo-alt"></i> Lokasi
                         </a>
+                        <a class="nav-link {% if request.endpoint and 'scan' in request.endpoint %}active{% endif %}" href="{{ url_for('scan_qr') }}">
+                            <i class="bi bi-qr-code-scan"></i> Scan QR
+                        </a>
                         <a class="nav-link {% if request.endpoint and 'riwayat' in request.endpoint %}active{% endif %}" href="{{ url_for('riwayat_list') }}">
                             <i class="bi bi-clock-history"></i> Riwayat
                         </a>
