@@ -4,11 +4,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime
 import os
+import qrcode
+import uuid
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
 # MySQL Configuration for XAMPP
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:@localhost/asset_management'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:122391@localhost/asset_management'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'app/static/uploads'
 
@@ -42,6 +44,35 @@ def generate_asset_code():
         code = f"AST-{today}-{count + 1:04d}"
     
     return code
+
+def generate_qr_code(asset):
+    """Generate QR Code for asset"""
+    # Create QR code instance
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    
+    # Generate URL for asset detail (use request.host_url for full URL)
+    asset_url = url_for('aset_detail', id=asset.id, _external=True)
+    
+    # Add data to QR code
+    qr.add_data(asset_url)
+    qr.make(fit=True)
+    
+    # Create image
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Generate unique filename
+    filename = f"QR_{asset.asset_code}_{uuid.uuid4().hex[:8]}.png"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'qrcodes', filename)
+    
+    # Save image
+    img.save(filepath)
+    
+    return f"uploads/qrcodes/{filename}", asset_url
 
 # ============ MODELS ============
 class User(db.Model):
@@ -427,6 +458,83 @@ def aset_foto_hapus(id):
     
     flash('Foto berhasil dihapus', 'success')
     return redirect(url_for('aset_detail', id=asset_id))
+
+# ============ QR CODE ROUTES ============
+@app.route('/aset/qr/generate/<int:id>', methods=['POST'])
+@login_required
+def qr_generate(id):
+    asset = Asset.query.get_or_404(id)
+    
+    # Check if QR already exists
+    existing_qr = QRCode.query.filter_by(asset_id=id).first()
+    if existing_qr:
+        flash('QR Code sudah ada. Gunakan "Regenerate" untuk membuat ulang.', 'warning')
+        return redirect(url_for('aset_detail', id=id))
+    
+    # Generate QR Code
+    qr_path, qr_value = generate_qr_code(asset)
+    
+    # Save to database
+    qr_code = QRCode(
+        asset_id=asset.id,
+        file_path=qr_path,
+        qr_value=qr_value
+    )
+    db.session.add(qr_code)
+    
+    # Log activity
+    history = AssetHistory(
+        asset_id=asset.id,
+        user_id=session['user_id'],
+        action='GENERATE_QR',
+        description=f'Generate QR Code untuk aset {asset.asset_code}'
+    )
+    db.session.add(history)
+    
+    db.session.commit()
+    
+    flash('QR Code berhasil di-generate', 'success')
+    return redirect(url_for('aset_detail', id=id))
+
+@app.route('/aset/qr/regenerate/<int:id>', methods=['POST'])
+@login_required
+def qr_regenerate(id):
+    asset = Asset.query.get_or_404(id)
+    
+    # Delete old QR code(s)
+    old_qrs = QRCode.query.filter_by(asset_id=id).all()
+    for old_qr in old_qrs:
+        # Delete file from filesystem
+        qr_path = os.path.join('app/static', old_qr.file_path)
+        if os.path.exists(qr_path):
+            os.remove(qr_path)
+        # Delete from database
+        db.session.delete(old_qr)
+    
+    # Generate new QR Code
+    qr_path, qr_value = generate_qr_code(asset)
+    
+    # Save to database
+    qr_code = QRCode(
+        asset_id=asset.id,
+        file_path=qr_path,
+        qr_value=qr_value
+    )
+    db.session.add(qr_code)
+    
+    # Log activity
+    history = AssetHistory(
+        asset_id=asset.id,
+        user_id=session['user_id'],
+        action='REGENERATE_QR',
+        description=f'Regenerate QR Code untuk aset {asset.asset_code}'
+    )
+    db.session.add(history)
+    
+    db.session.commit()
+    
+    flash('QR Code berhasil di-regenerate', 'success')
+    return redirect(url_for('aset_detail', id=id))
 
 @app.route('/aset/tambah', methods=['GET', 'POST'])
 @login_required
