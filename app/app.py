@@ -55,8 +55,8 @@ def generate_qr_code(asset):
         border=4,
     )
     
-    # Generate URL for asset detail (use request.host_url for full URL)
-    asset_url = url_for('aset_detail', id=asset.id, _external=True)
+    # Generate PUBLIC URL for asset detail (accessible without login)
+    asset_url = url_for('public_aset_detail', id=asset.id, _external=True)
     
     # Add data to QR code
     qr.add_data(asset_url)
@@ -542,6 +542,13 @@ def qr_regenerate(id):
 def scan_qr():
     return render_template('scan/qr_scanner.html')
 
+# ============ PUBLIC ROUTES (Guest Access) ============
+@app.route('/public/aset/<int:id>')
+def public_aset_detail(id):
+    """Public asset detail page - accessible without login"""
+    asset = Asset.query.get_or_404(id)
+    return render_template('public/aset_detail.html', asset=asset)
+
 @app.route('/aset/tambah', methods=['GET', 'POST'])
 @login_required
 def aset_tambah():
@@ -831,7 +838,46 @@ def lokasi_hapus(id):
 @app.route('/riwayat')
 @login_required
 def riwayat_list():
-    return render_template('riwayat/list.html')
+    # Get filter parameters
+    user_filter = request.args.get('user', '')
+    action_filter = request.args.get('action', '')
+    date_filter = request.args.get('date', '')
+    
+    # Base query
+    query = AssetHistory.query
+    
+    # Apply filters
+    if user_filter:
+        query = query.filter_by(user_id=user_filter)
+    
+    if action_filter:
+        query = query.filter_by(action=action_filter)
+    
+    if date_filter:
+        # Filter by date (YYYY-MM-DD)
+        try:
+            filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(AssetHistory.timestamp) == filter_date)
+        except ValueError:
+            pass
+    
+    # Get activities (descending order)
+    activities = query.order_by(AssetHistory.timestamp.desc()).all()
+    
+    # Get all users for filter dropdown
+    users = User.query.order_by(User.username).all()
+    
+    # Get unique actions for filter
+    actions = db.session.query(AssetHistory.action).distinct().order_by(AssetHistory.action).all()
+    actions = [a[0] for a in actions if a[0]]  # Extract from tuples
+    
+    return render_template('riwayat/list.html',
+                         activities=activities,
+                         users=users,
+                         actions=actions,
+                         user_filter=user_filter,
+                         action_filter=action_filter,
+                         date_filter=date_filter)
 
 # ============ INIT DB ============
 def init_db():

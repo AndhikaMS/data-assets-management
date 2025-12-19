@@ -167,7 +167,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -180,24 +180,105 @@ const resultArea = document.getElementById('result-area');
 let scanning = false;
 let stream = null;
 
-// Request camera access
-navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+// Check if getUserMedia is supported
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    updateStatus('error', 'Browser tidak support');
+    resultArea.innerHTML = `
+        <div class="alert alert-danger">
+            <strong>Browser Tidak Didukung</strong><br>
+            Gunakan browser modern (Chrome, Firefox, Safari, Edge)
+        </div>
+    `;
+} else {
+    // Request camera access
+    updateStatus('ready', 'Meminta izin kamera...');
+    
+    navigator.mediaDevices.getUserMedia({ 
+        video: { 
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+        } 
+    })
     .then(function(mediaStream) {
         stream = mediaStream;
         video.srcObject = stream;
         startBtn.disabled = false;
         updateStatus('ready', 'Ready');
+        
+        resultArea.innerHTML = `
+            <div class="alert alert-success">
+                <i class="bi bi-check-circle"></i>
+                <strong>Kamera Aktif</strong><br>
+                <small>Klik "Mulai Scan" untuk memulai</small>
+            </div>
+        `;
     })
     .catch(function(err) {
         console.error('Error accessing camera:', err);
-        updateStatus('error', 'Kamera tidak tersedia');
+        
+        let errorMessage = 'Tidak dapat mengakses kamera';
+        let errorDetail = err.message;
+        let suggestions = '';
+        
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            errorMessage = 'Izin Kamera Ditolak';
+            errorDetail = 'User tidak mengizinkan akses kamera';
+            suggestions = `
+                <strong>Solusi:</strong>
+                <ol class="small">
+                    <li>Klik icon 🔒 di address bar</li>
+                    <li>Ubah izin Camera menjadi "Allow"</li>
+                    <li>Reload halaman ini</li>
+                </ol>
+            `;
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            errorMessage = 'Kamera Tidak Ditemukan';
+            errorDetail = 'Tidak ada kamera yang tersedia';
+            suggestions = `
+                <strong>Solusi:</strong>
+                <ul class="small">
+                    <li>Pastikan webcam terpasang</li>
+                    <li>Cek driver kamera</li>
+                </ul>
+            `;
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            errorMessage = 'Kamera Sedang Digunakan';
+            errorDetail = 'Kamera sedang digunakan aplikasi lain';
+            suggestions = `
+                <strong>Solusi:</strong>
+                <ul class="small">
+                    <li>Tutup aplikasi lain yang menggunakan kamera</li>
+                    <li>Reload halaman ini</li>
+                </ul>
+            `;
+        } else if (err.name === 'NotSupportedError') {
+            errorMessage = 'HTTPS Diperlukan';
+            errorDetail = 'Akses kamera memerlukan koneksi aman';
+            suggestions = `
+                <strong>Solusi:</strong>
+                <ul class="small">
+                    <li>Akses via: <code>http://localhost:5000/scan</code></li>
+                    <li>JANGAN gunakan IP address (127.0.0.1 atau 192.168.x.x)</li>
+                    <li>Atau gunakan HTTPS di production</li>
+                </ul>
+            `;
+        }
+        
+        updateStatus('error', 'Error');
         resultArea.innerHTML = `
             <div class="alert alert-danger">
-                <strong>Error:</strong> Tidak dapat mengakses kamera.<br>
-                <small>${err.message}</small>
+                <h6><i class="bi bi-exclamation-triangle"></i> ${errorMessage}</h6>
+                <small class="text-muted">${errorDetail}</small>
+                <hr>
+                ${suggestions}
+                <button class="btn btn-primary btn-sm mt-2 w-100" onclick="location.reload()">
+                    <i class="bi bi-arrow-clockwise"></i> Muat Ulang
+                </button>
             </div>
         `;
     });
+}
 
 // Start scanning
 startBtn.addEventListener('click', function() {
@@ -205,6 +286,15 @@ startBtn.addEventListener('click', function() {
     startBtn.style.display = 'none';
     stopBtn.style.display = 'inline-block';
     updateStatus('scanning', 'Scanning...');
+    
+    resultArea.innerHTML = `
+        <div class="alert alert-info">
+            <i class="bi bi-search"></i>
+            <strong>Sedang Scan...</strong><br>
+            <small>Arahkan QR Code ke kamera</small>
+        </div>
+    `;
+    
     tick();
 });
 
@@ -214,6 +304,13 @@ stopBtn.addEventListener('click', function() {
     stopBtn.style.display = 'none';
     startBtn.style.display = 'inline-block';
     updateStatus('ready', 'Ready');
+    
+    resultArea.innerHTML = `
+        <p class="text-muted text-center">
+            <i class="bi bi-qr-code" style="font-size: 3rem;"></i><br>
+            Scan dihentikan
+        </p>
+    `;
 });
 
 // Scan loop
@@ -242,31 +339,33 @@ function tick() {
 // Handle detected QR code
 function handleQRCode(data) {
     scanning = false;
+    stopBtn.style.display = 'none';
+    startBtn.style.display = 'inline-block';
     updateStatus('ready', 'QR Terdeteksi!');
     
     // Display result
     resultArea.innerHTML = `
         <div class="alert alert-success">
-            <strong>QR Code Terdeteksi!</strong><br>
+            <h6><i class="bi bi-check-circle"></i> QR Code Terdeteksi!</h6>
             <small class="text-break">${data}</small>
         </div>
-        <div class="text-center">
+        <div class="text-center mt-3">
             <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
-            <p class="mt-2">Redirect...</p>
+            <p class="mt-2"><strong>Redirect...</strong></p>
         </div>
     `;
     
-    // Check if it's our asset URL
-    if (data.includes('/aset/detail/')) {
+    // Check if it's our asset URL (public or admin)
+    if (data.includes('/public/aset/') || data.includes('/aset/detail/')) {
         // Extract asset ID from URL
-        const match = data.match(/\/aset\/detail\/(\d+)/);
+        const match = data.match(/\/(?:public\/)?aset\/(?:detail\/)?(\d+)/);
         if (match) {
             const assetId = match[1];
-            // Redirect to asset detail
+            // Redirect to public asset detail (accessible by all)
             setTimeout(() => {
-                window.location.href = `/aset/detail/${assetId}`;
+                window.location.href = `/public/aset/${assetId}`;
             }, 1000);
         } else {
             showError('URL tidak valid');
@@ -300,11 +399,12 @@ function showError(message) {
     
     resultArea.innerHTML = `
         <div class="alert alert-danger">
-            <strong>Error:</strong> ${message}
+            <h6><i class="bi bi-x-circle"></i> Error</h6>
+            <p>${message}</p>
+            <button class="btn btn-primary btn-sm w-100 mt-2" onclick="location.reload()">
+                <i class="bi bi-arrow-clockwise"></i> Scan Ulang
+            </button>
         </div>
-        <button class="btn btn-primary w-100" onclick="location.reload()">
-            <i class="bi bi-arrow-clockwise"></i> Scan Ulang
-        </button>
     `;
 }
 
